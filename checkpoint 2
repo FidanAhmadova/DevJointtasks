@@ -1,0 +1,216 @@
+-- DevJoint Week 4 - Checkpoint 2
+-- SQL queries for necessary data extraction / aggregation
+-- Dataset: marketing_dataset_week4.xlsx
+-- SQL dialect: PostgreSQL
+--
+-- Tables used:
+--   marketing_events(event_id, date, customer_id, campaign_id, channel, region,
+--                    sessions, conversions, spend, revenue)
+--   customers(customer_id, region, customer_segment)
+--   campaigns(campaign_id, campaign_name, channel, campaign_objective)
+
+
+-- 1. Overall marketing KPI summary
+-- Calculates the main KPIs defined in Checkpoint 1.
+SELECT
+    SUM(sessions) AS total_sessions,
+    SUM(conversions) AS total_conversions,
+    ROUND(
+        SUM(conversions)::numeric / NULLIF(SUM(sessions), 0) * 100,
+        2
+    ) AS conversion_rate_pct,
+    ROUND(SUM(spend)::numeric, 2) AS total_spend,
+    ROUND(SUM(revenue)::numeric, 2) AS total_revenue,
+    ROUND(
+        SUM(revenue)::numeric / NULLIF(SUM(spend), 0),
+        2
+    ) AS roas,
+    ROUND(
+        SUM(spend)::numeric / NULLIF(SUM(conversions), 0),
+        2
+    ) AS cpa
+FROM marketing_events;
+
+
+-- 2. Marketing performance by channel
+-- Used to compare which channels generate the strongest traffic,
+-- conversions, revenue and return on marketing spend.
+SELECT
+    channel,
+    SUM(sessions) AS total_sessions,
+    SUM(conversions) AS total_conversions,
+    ROUND(
+        SUM(conversions)::numeric / NULLIF(SUM(sessions), 0) * 100,
+        2
+    ) AS conversion_rate_pct,
+    ROUND(SUM(spend)::numeric, 2) AS total_spend,
+    ROUND(SUM(revenue)::numeric, 2) AS total_revenue,
+    ROUND(
+        SUM(revenue)::numeric / NULLIF(SUM(spend), 0),
+        2
+    ) AS roas,
+    ROUND(
+        SUM(spend)::numeric / NULLIF(SUM(conversions), 0),
+        2
+    ) AS cpa
+FROM marketing_events
+GROUP BY channel
+ORDER BY total_revenue DESC;
+
+
+-- 3. Marketing performance by campaign
+-- Joins the fact table to the campaigns dimension so that campaign names
+-- and objectives can be analyzed together with the KPI results.
+SELECT
+    c.campaign_id,
+    c.campaign_name,
+    c.channel,
+    c.campaign_objective,
+    SUM(m.sessions) AS total_sessions,
+    SUM(m.conversions) AS total_conversions,
+    ROUND(
+        SUM(m.conversions)::numeric / NULLIF(SUM(m.sessions), 0) * 100,
+        2
+    ) AS conversion_rate_pct,
+    ROUND(SUM(m.spend)::numeric, 2) AS total_spend,
+    ROUND(SUM(m.revenue)::numeric, 2) AS total_revenue,
+    ROUND(
+        SUM(m.revenue)::numeric / NULLIF(SUM(m.spend), 0),
+        2
+    ) AS roas,
+    ROUND(
+        SUM(m.spend)::numeric / NULLIF(SUM(m.conversions), 0),
+        2
+    ) AS cpa
+FROM marketing_events AS m
+JOIN campaigns AS c
+    ON m.campaign_id = c.campaign_id
+GROUP BY
+    c.campaign_id,
+    c.campaign_name,
+    c.channel,
+    c.campaign_objective
+ORDER BY total_revenue DESC;
+
+
+-- 4. Marketing performance by touchpoint region
+-- Uses marketing_events.region because this field represents the region
+-- associated with the marketing touchpoint.
+SELECT
+    region,
+    SUM(sessions) AS total_sessions,
+    SUM(conversions) AS total_conversions,
+    ROUND(
+        SUM(conversions)::numeric / NULLIF(SUM(sessions), 0) * 100,
+        2
+    ) AS conversion_rate_pct,
+    ROUND(SUM(spend)::numeric, 2) AS total_spend,
+    ROUND(SUM(revenue)::numeric, 2) AS total_revenue,
+    ROUND(
+        SUM(revenue)::numeric / NULLIF(SUM(spend), 0),
+        2
+    ) AS roas,
+    ROUND(
+        SUM(spend)::numeric / NULLIF(SUM(conversions), 0),
+        2
+    ) AS cpa
+FROM marketing_events
+GROUP BY region
+ORDER BY total_revenue DESC;
+
+
+-- 5. Marketing performance by customer segment
+-- Joins customers to marketing_events through customer_id.
+SELECT
+    cu.customer_segment,
+    SUM(m.sessions) AS total_sessions,
+    SUM(m.conversions) AS total_conversions,
+    ROUND(
+        SUM(m.conversions)::numeric / NULLIF(SUM(m.sessions), 0) * 100,
+        2
+    ) AS conversion_rate_pct,
+    ROUND(SUM(m.spend)::numeric, 2) AS total_spend,
+    ROUND(SUM(m.revenue)::numeric, 2) AS total_revenue,
+    ROUND(
+        SUM(m.revenue)::numeric / NULLIF(SUM(m.spend), 0),
+        2
+    ) AS roas,
+    ROUND(
+        SUM(m.spend)::numeric / NULLIF(SUM(m.conversions), 0),
+        2
+    ) AS cpa
+FROM marketing_events AS m
+JOIN customers AS cu
+    ON m.customer_id = cu.customer_id
+GROUP BY cu.customer_segment
+ORDER BY total_revenue DESC;
+
+
+-- 6. Year-over-year marketing performance
+-- The dataset contains July-December 2024 and July-December 2025.
+SELECT
+    EXTRACT(YEAR FROM date) AS year,
+    SUM(sessions) AS total_sessions,
+    SUM(conversions) AS total_conversions,
+    ROUND(
+        SUM(conversions)::numeric / NULLIF(SUM(sessions), 0) * 100,
+        2
+    ) AS conversion_rate_pct,
+    ROUND(SUM(spend)::numeric, 2) AS total_spend,
+    ROUND(SUM(revenue)::numeric, 2) AS total_revenue,
+    ROUND(
+        SUM(revenue)::numeric / NULLIF(SUM(spend), 0),
+        2
+    ) AS roas,
+    ROUND(
+        SUM(spend)::numeric / NULLIF(SUM(conversions), 0),
+        2
+    ) AS cpa
+FROM marketing_events
+GROUP BY EXTRACT(YEAR FROM date)
+ORDER BY year;
+
+
+-- 7. Revenue growth from 2024 to 2025
+-- Directly calculates the Revenue Growth KPI from Checkpoint 1.
+WITH yearly_revenue AS (
+    SELECT
+        EXTRACT(YEAR FROM date) AS year,
+        SUM(revenue) AS total_revenue
+    FROM marketing_events
+    GROUP BY EXTRACT(YEAR FROM date)
+)
+SELECT
+    ROUND(
+        (
+            MAX(CASE WHEN year = 2025 THEN total_revenue END)
+            - MAX(CASE WHEN year = 2024 THEN total_revenue END)
+        )::numeric
+        / NULLIF(
+            MAX(CASE WHEN year = 2024 THEN total_revenue END),
+            0
+        ) * 100,
+        2
+    ) AS revenue_growth_pct
+FROM yearly_revenue;
+
+
+-- 8. Monthly trend for reporting/dashboard analysis
+-- Useful for visualizing changes in sessions, conversions, spend and revenue over time.
+SELECT
+    DATE_TRUNC('month', date) AS month,
+    SUM(sessions) AS total_sessions,
+    SUM(conversions) AS total_conversions,
+    ROUND(
+        SUM(conversions)::numeric / NULLIF(SUM(sessions), 0) * 100,
+        2
+    ) AS conversion_rate_pct,
+    ROUND(SUM(spend)::numeric, 2) AS total_spend,
+    ROUND(SUM(revenue)::numeric, 2) AS total_revenue,
+    ROUND(
+        SUM(revenue)::numeric / NULLIF(SUM(spend), 0),
+        2
+    ) AS roas
+FROM marketing_events
+GROUP BY DATE_TRUNC('month', date)
+ORDER BY month;
